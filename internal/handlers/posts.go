@@ -23,6 +23,19 @@ func RegisterPosts(r chi.Router, db *pgxpool.Pool, store storage.Storage) {
 }
 
 // createThread handles POST /boards/{boardSlug}/threads, creating a new thread.
+// @Summary Create thread
+// @Description Create a new thread in a board
+// @Tags posts
+// @Accept json
+// @Produce json
+// @Param boardSlug path string true "Board slug"
+// @Param thread body object{title=string,content=string,image=string,tags=[]string,metadata=object} true "Thread data"
+// @Success 201 {object} models.Post "Thread created successfully"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 404 {string} string "Board not found"
+// @Failure 403 {string} string "Thread limit reached"
+// @Failure 500 {string} string "Failed to create thread"
+// @Router /boards/{boardSlug}/threads [post]
 func createThread(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

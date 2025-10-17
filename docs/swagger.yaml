@@ -1,0 +1,413 @@
+basePath: /
+definitions:
+  handlers.HealthResponse:
+    properties:
+      services:
+        additionalProperties:
+          type: string
+        type: object
+      status:
+        type: string
+      timestamp:
+        type: string
+      uptime:
+        type: string
+    type: object
+  models.Board:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      settings:
+        additionalProperties: true
+        type: object
+      slug:
+        type: string
+    type: object
+  models.Post:
+    properties:
+      archived_at:
+        type: string
+      board_id:
+        type: integer
+      content:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      image_url:
+        type: string
+      last_bumped_at:
+        type: string
+      metadata:
+        additionalProperties: true
+        type: object
+      thread_id:
+        type: integer
+      title:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  models.User:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: integer
+      is_admin:
+        type: boolean
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: A 4chan-inspired image board API built with Go, Chi, PostgreSQL, and
+    JSONB
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  termsOfService: http://swagger.io/terms/
+  title: Noppera Image Board API
+  version: "1.0"
+paths:
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and return JWT token
+      parameters:
+      - description: Login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          properties:
+            password:
+              type: string
+            username:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Login successful
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "401":
+          description: Invalid credentials
+          schema:
+            type: string
+        "500":
+          description: Failed to generate token
+          schema:
+            type: string
+      summary: Login user
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account
+      parameters:
+      - description: User registration data
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.User'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: User created successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "500":
+          description: Failed to create user
+          schema:
+            type: string
+      summary: Register a new user
+      tags:
+      - auth
+  /auth/register/admin:
+    post:
+      consumes:
+      - application/json
+      description: Create a new admin user account (admin only)
+      parameters:
+      - description: Admin user registration data
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/models.User'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Admin user created successfully
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Admin access required
+          schema:
+            type: string
+        "500":
+          description: Failed to create admin
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Register admin user
+      tags:
+      - auth
+  /boards:
+    get:
+      description: Get all available boards
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of boards
+          schema:
+            items:
+              $ref: '#/definitions/models.Board'
+            type: array
+        "500":
+          description: Failed to list boards
+          schema:
+            type: string
+      summary: List boards
+      tags:
+      - boards
+    post:
+      consumes:
+      - application/json
+      description: Create a new board (admin only)
+      parameters:
+      - description: Board data
+        in: body
+        name: board
+        required: true
+        schema:
+          $ref: '#/definitions/models.Board'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Board created successfully
+          schema:
+            $ref: '#/definitions/models.Board'
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+        "403":
+          description: Admin access required
+          schema:
+            type: string
+        "500":
+          description: Failed to create board
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Create board
+      tags:
+      - boards
+  /boards/{boardSlug}/threads:
+    post:
+      consumes:
+      - application/json
+      description: Create a new thread in a board
+      parameters:
+      - description: Board slug
+        in: path
+        name: boardSlug
+        required: true
+        type: string
+      - description: Thread data
+        in: body
+        name: thread
+        required: true
+        schema:
+          properties:
+            content:
+              type: string
+            image:
+              type: string
+            metadata:
+              type: object
+            tags:
+              items:
+                type: string
+              type: array
+            title:
+              type: string
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Thread created successfully
+          schema:
+            $ref: '#/definitions/models.Post'
+        "400":
+          description: Invalid request body
+          schema:
+            type: string
+        "403":
+          description: Thread limit reached
+          schema:
+            type: string
+        "404":
+          description: Board not found
+          schema:
+            type: string
+        "500":
+          description: Failed to create thread
+          schema:
+            type: string
+      summary: Create thread
+      tags:
+      - posts
+  /health:
+    get:
+      description: Check the health status of the API and its dependencies
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is healthy
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+        "503":
+          description: Service is unhealthy
+          schema:
+            $ref: '#/definitions/handlers.HealthResponse'
+      summary: Health check
+      tags:
+      - health
+  /health/live:
+    get:
+      description: Check if the service is alive
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is alive
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Liveness check
+      tags:
+      - health
+  /health/ready:
+    get:
+      description: Check if the service is ready to accept traffic
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Service is ready
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "503":
+          description: Service is not ready
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Readiness check
+      tags:
+      - health
+  /posts/search:
+    get:
+      description: Search posts by content, tags, or board
+      parameters:
+      - description: Search query
+        in: query
+        name: query
+        type: string
+      - description: Tag to filter by
+        in: query
+        name: tag
+        type: string
+      - description: Board ID to filter by
+        in: query
+        name: board_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Search results
+          schema:
+            items:
+              $ref: '#/definitions/models.Post'
+            type: array
+        "400":
+          description: Invalid board ID
+          schema:
+            type: string
+        "500":
+          description: Failed to search posts
+          schema:
+            type: string
+      summary: Search posts
+      tags:
+      - search
+schemes:
+- http
+- https
+securityDefinitions:
+  BearerAuth:
+    description: Type "Bearer" followed by a space and JWT token.
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

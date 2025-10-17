@@ -17,6 +17,17 @@ func RegisterSearch(r chi.Router, db *pgxpool.Pool) {
 }
 
 // searchPosts handles GET /posts/search?query={term}&tag={tag}&board_id={id}, searching posts by content or tags.
+// @Summary Search posts
+// @Description Search posts by content, tags, or board
+// @Tags search
+// @Produce json
+// @Param query query string false "Search query"
+// @Param tag query string false "Tag to filter by"
+// @Param board_id query int false "Board ID to filter by"
+// @Success 200 {array} models.Post "Search results"
+// @Failure 400 {string} string "Invalid board ID"
+// @Failure 500 {string} string "Failed to search posts"
+// @Router /posts/search [get]
 func searchPosts(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

@@ -19,6 +19,13 @@ func RegisterBoards(r chi.Router, db *pgxpool.Pool, store storage.Storage) {
 }
 
 // listBoards handles GET /boards, listing all boards.
+// @Summary List boards
+// @Description Get all available boards
+// @Tags boards
+// @Produce json
+// @Success 200 {array} models.Board "List of boards"
+// @Failure 500 {string} string "Failed to list boards"
+// @Router /boards [get]
 func listBoards(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		boards, err := models.ListBoards(r.Context(), db)
@@ -31,6 +38,19 @@ func listBoards(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 // createBoard handles POST /boards, creating a new board (admin only).
+// @Summary Create board
+// @Description Create a new board (admin only)
+// @Tags boards
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param board body models.Board true "Board data"
+// @Success 201 {object} models.Board "Board created successfully"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Admin access required"
+// @Failure 500 {string} string "Failed to create board"
+// @Router /boards [post]
 func createBoard(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var board models.Board

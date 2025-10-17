@@ -22,6 +22,16 @@ func RegisterAuth(r *chi.Mux, db *pgxpool.Pool, cfg config.Config) {
 }
 
 // register handles POST /auth/register, creating a new user.
+// @Summary Register a new user
+// @Description Create a new user account
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param user body models.User true "User registration data"
+// @Success 201 {object} map[string]interface{} "User created successfully"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 500 {string} string "Failed to create user"
+// @Router /auth/register [post]
 func register(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var user models.User
@@ -58,6 +68,17 @@ func register(db *pgxpool.Pool) http.HandlerFunc {
 }
 
 // login handles POST /auth/login, issuing a JWT.
+// @Summary Login user
+// @Description Authenticate user and return JWT token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param credentials body object{username=string,password=string} true "Login credentials"
+// @Success 200 {object} map[string]string "Login successful"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 401 {string} string "Invalid credentials"
+// @Failure 500 {string} string "Failed to generate token"
+// @Router /auth/login [post]
 func login(db *pgxpool.Pool, cfg config.Config) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var creds struct {
@@ -109,6 +130,19 @@ func login(db *pgxpool.Pool, cfg config.Config) http.HandlerFunc {
 }
 
 // registerAdmin handles POST /auth/register/admin, creating an admin user.
+// @Summary Register admin user
+// @Description Create a new admin user account (admin only)
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param user body models.User true "Admin user registration data"
+// @Success 201 {object} map[string]interface{} "Admin user created successfully"
+// @Failure 400 {string} string "Invalid request body"
+// @Failure 401 {string} string "Unauthorized"
+// @Failure 403 {string} string "Admin access required"
+// @Failure 500 {string} string "Failed to create admin"
+// @Router /auth/register/admin [post]
 func registerAdmin(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var user models.User

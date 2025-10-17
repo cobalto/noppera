@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"time"
@@ -37,7 +38,12 @@ type Config struct {
 // Load loads configuration from environment variables.
 func Load() Config {
 	return Config{
-		DatabaseURL:         getEnv("POSTGRES_HOST", "db") + ":" + getEnv("POSTGRES_PORT", "5432"),
+		DatabaseURL:         fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", 
+			getEnv("POSTGRES_USER", "admin"),
+			getEnv("POSTGRES_PASSWORD", "password"),
+			getEnv("POSTGRES_HOST", "localhost"),
+			getEnv("POSTGRES_PORT", "5432"),
+			getEnv("POSTGRES_DB", "imageboard")),
 		APIHost:             getEnv("API_HOST", "0.0.0.0"),
 		APIPort:             getEnv("API_PORT", "8080"),
 		JWTSecret:           getEnv("JWT_SECRET", "your-32-byte-secret-here"),

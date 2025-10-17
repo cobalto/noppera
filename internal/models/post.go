@@ -52,9 +52,9 @@ func ListThreads(ctx context.Context, db *pgxpool.Pool, boardID string) ([]Post,
 // CreatePost creates a new post (thread or reply).
 func CreatePost(ctx context.Context, db *pgxpool.Pool, post *Post) error {
 	return db.QueryRow(ctx,
-		"INSERT INTO posts (board_id, user_id, title, content, image_url, metadata, created_at, last_bumped_at) "+
-			"VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at, last_bumped_at",
-		post.BoardID, post.UserID, post.Title, post.Content, post.ImageURL, post.Metadata, post.CreatedAt, post.LastBumpedAt,
+		"INSERT INTO posts (board_id, thread_id, user_id, title, content, image_url, metadata, created_at, last_bumped_at) "+
+			"VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, created_at, last_bumped_at",
+		post.BoardID, post.ThreadID, post.UserID, post.Title, post.Content, post.ImageURL, post.Metadata, post.CreatedAt, post.LastBumpedAt,
 	).Scan(&post.ID, &post.CreatedAt, &post.LastBumpedAt)
 }
 

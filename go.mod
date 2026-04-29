@@ -1,8 +1,6 @@
 module github.com/cobalto/noppera
 
-go 1.24.0
-
-toolchain go1.24.5
+go 1.25.0
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.26.1
@@ -13,7 +11,7 @@ require (
 	github.com/didip/tollbooth/v7 v7.0.1
 	github.com/go-chi/chi/v5 v5.2.2
 	github.com/golang-jwt/jwt/v5 v5.2.2
-	github.com/jackc/pgx/v5 v5.7.5
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/rs/zerolog v1.32.0
 	github.com/swaggo/http-swagger v1.3.4

@@ -58,9 +58,24 @@ func CreatePost(ctx context.Context, db *pgxpool.Pool, post *Post) error {
 	).Scan(&post.ID, &post.CreatedAt, &post.LastBumpedAt)
 }
 
+// CreatePostTx creates a new post within a transaction.
+func CreatePostTx(ctx context.Context, tx pgx.Tx, post *Post) error {
+	return tx.QueryRow(ctx,
+		"INSERT INTO posts (board_id, user_id, title, content, image_url, metadata, created_at, last_bumped_at) "+
+			"VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, created_at, last_bumped_at",
+		post.BoardID, post.UserID, post.Title, post.Content, post.ImageURL, post.Metadata, post.CreatedAt, post.LastBumpedAt,
+	).Scan(&post.ID, &post.CreatedAt, &post.LastBumpedAt)
+}
+
 // UpdateThreadBumpTime updates the thread's last_bumped_at.
 func UpdateThreadBumpTime(ctx context.Context, db *pgxpool.Pool, threadID int, bumpTime time.Time) error {
 	_, err := db.Exec(ctx, "UPDATE posts SET last_bumped_at = $1 WHERE id = $2 AND thread_id IS NULL", bumpTime, threadID)
+	return err
+}
+
+// UpdateThreadBumpTimeTx updates the thread's last_bumped_at within a transaction.
+func UpdateThreadBumpTimeTx(ctx context.Context, tx pgx.Tx, threadID int, bumpTime time.Time) error {
+	_, err := tx.Exec(ctx, "UPDATE posts SET last_bumped_at = $1 WHERE id = $2 AND thread_id IS NULL", bumpTime, threadID)
 	return err
 }
 

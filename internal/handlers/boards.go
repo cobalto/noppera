@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"regexp"
 	"strconv"
 
 	"github.com/cobalto/noppera/internal/middleware"
@@ -64,6 +65,11 @@ func createBoard(db *pgxpool.Pool) http.HandlerFunc {
 			return
 		}
 
+		if !isValidSlug(board.Slug) {
+			http.Error(w, "Invalid slug format: must be 1-10 alphanumeric lowercase characters", http.StatusBadRequest)
+			return
+		}
+
 		ctx := r.Context()
 		if err := models.CreateBoard(ctx, db, &board); err != nil {
 			http.Error(w, "Failed to create board", http.StatusInternalServerError)
@@ -73,6 +79,15 @@ func createBoard(db *pgxpool.Pool) http.HandlerFunc {
 		w.WriteHeader(http.StatusCreated)
 		json.NewEncoder(w).Encode(board)
 	}
+}
+
+var validSlugRegex = regexp.MustCompile(`^[a-z0-9]{1,10}$`)
+
+func isValidSlug(slug string) bool {
+	if len(slug) < 1 || len(slug) > 10 {
+		return false
+	}
+	return validSlugRegex.MatchString(slug)
 }
 
 // parseInt converts a string to an integer or returns an error.

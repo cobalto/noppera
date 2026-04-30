@@ -65,8 +65,12 @@ func (s *LocalStorage) Upload(ctx context.Context, data []byte, ext string) (str
 		return "", fmt.Errorf("upload to %s cancelled: %w", path, ctx.Err())
 	}
 
-	// Construct URL using configurable prefix
-	url := fmt.Sprintf("http://%s:%s%s/%s", s.cfg.APIHost, s.cfg.APIPort, s.cfg.UploadURLPrefix, filename)
+	// Construct URL using configurable prefix and respect USE_HTTPS flag
+	scheme := "http"
+	if os.Getenv("USE_HTTPS") == "true" {
+		scheme = "https"
+	}
+	url := fmt.Sprintf("%s://%s:%s%s/%s", scheme, s.cfg.APIHost, s.cfg.APIPort, s.cfg.UploadURLPrefix, filename)
 	return url, nil
 }
 

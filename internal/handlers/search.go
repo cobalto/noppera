@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cobalto/noppera/internal/models"
@@ -16,24 +18,19 @@ func RegisterSearch(r chi.Router, db *pgxpool.Pool) {
 	r.Get("/posts/search", searchPosts(db))
 }
 
-// searchPosts handles GET /posts/search?query={term}&tag={tag}&board_id={id}, searching posts by content or tags.
-// @Summary Search posts
-// @Description Search posts by content, tags, or board
-// @Tags search
-// @Produce json
-// @Param query query string false "Search query"
-// @Param tag query string false "Tag to filter by"
-// @Param board_id query int false "Board ID to filter by"
-// @Success 200 {array} models.Post "Search results"
-// @Failure 400 {string} string "Invalid board ID"
-// @Failure 500 {string} string "Failed to search posts"
-// @Router /posts/search [get]
+// searchPosts handles GET /posts/search?query={term}&tag={tag}&board_id={id}&page={page}&limit={limit}, searching posts by content or tags.
 func searchPosts(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		query := r.URL.Query().Get("query")
 		tag := r.URL.Query().Get("tag")
 		boardIDStr := r.URL.Query().Get("board_id")
+		page := getIntQuery(r, "page", 1)
+		limit := getIntQuery(r, "limit", 20)
+		if limit > 100 {
+			limit = 100
+		}
+		offset := (page - 1) * limit
 
 		var boardID *int
 		if boardIDStr != "" {
@@ -45,29 +42,34 @@ func searchPosts(db *pgxpool.Pool) http.HandlerFunc {
 			boardID = &id
 		}
 
-		// Build SQL query with full-text search
 		sql := "SELECT id, board_id, thread_id, user_id, title, content, image_url, metadata, created_at, updated_at, last_bumped_at, archived_at " +
 			"FROM posts WHERE archived_at IS NULL"
 		args := []interface{}{}
-		var conditions []string
+		argNum := 1
 
 		if query != "" {
-			conditions = append(conditions, "to_tsvector('english', content) @@ to_tsquery('english', $1)")
-			args = append(args, strings.ReplaceAll(query, " ", " & "))
+			sanitizedQuery := sanitizeSearchQuery(query)
+			if sanitizedQuery == "" {
+				http.Error(w, "Invalid search query", http.StatusBadRequest)
+				return
+			}
+			sql += fmt.Sprintf(" AND to_tsvector('english', content) @@ to_tsquery('english', $%d)", argNum)
+			args = append(args, sanitizedQuery)
+			argNum++
 		}
 		if tag != "" {
-			conditions = append(conditions, "metadata->'tags' @> $2")
+			sql += fmt.Sprintf(" AND metadata->'tags' @> $%d", argNum)
 			args = append(args, fmt.Sprintf(`["%s"]`, tag))
+			argNum++
 		}
 		if boardID != nil {
-			conditions = append(conditions, "board_id = $3")
+			sql += fmt.Sprintf(" AND board_id = $%d", argNum)
 			args = append(args, *boardID)
+			argNum++
 		}
 
-		if len(conditions) > 0 {
-			sql += " AND " + strings.Join(conditions, " AND ")
-		}
-		sql += " ORDER BY last_bumped_at DESC LIMIT 100"
+		sql += fmt.Sprintf(" ORDER BY last_bumped_at DESC LIMIT $%d OFFSET $%d", argNum, argNum+1)
+		args = append(args, limit, offset)
 
 		rows, err := db.Query(ctx, sql, args...)
 		if err != nil {
@@ -89,4 +91,45 @@ func searchPosts(db *pgxpool.Pool) http.HandlerFunc {
 
 		json.NewEncoder(w).Encode(posts)
 	}
+}
+
+func getIntQuery(r *http.Request, key string, defaultValue int) int {
+	str := r.URL.Query().Get(key)
+	if str == "" {
+		return defaultValue
+	}
+	val, err := strconv.Atoi(str)
+	if err != nil || val < 1 {
+		return defaultValue
+	}
+	return val
+}
+
+var searchWordRegex = regexp.MustCompile(`^[a-zA-Z0-9]+$`)
+
+func sanitizeSearchQuery(query string) string {
+	words := strings.Fields(query)
+	if len(words) == 0 {
+		return ""
+	}
+	var sanitized []string
+	for _, word := range words {
+		cleaned := strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+				return r
+			}
+			return -1
+		}, word)
+		if len(cleaned) > 0 && len(cleaned) <= 20 {
+			sanitized = append(sanitized, cleaned)
+		}
+	}
+	if len(sanitized) == 0 {
+		return ""
+	}
+	result := strings.Join(sanitized, " & ")
+	if !searchWordRegex.MatchString(result) {
+		result = result + ":*"
+	}
+	return result
 }

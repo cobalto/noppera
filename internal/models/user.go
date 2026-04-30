@@ -45,3 +45,13 @@ func GetUserByUsername(ctx context.Context, db *pgxpool.Pool, username string) (
 	}
 	return &u, nil
 }
+
+// CountUsers returns the number of users in the database.
+func CountUsers(ctx context.Context, db *pgxpool.Pool) (int, error) {
+	var count int
+	err := db.QueryRow(ctx, "SELECT COUNT(*) FROM users").Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count users: %w", err)
+	}
+	return count, nil
+}

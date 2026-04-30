@@ -11,7 +11,54 @@ import (
 
 // RegisterThreads sets up thread-related routes.
 func RegisterThreads(r chi.Router, db *pgxpool.Pool) {
+	r.Get("/boards/{boardSlug}/threads", listThreads(db))
 	r.Get("/threads/{threadID}", getThread(db))
+}
+
+// listThreads handles GET /boards/{boardSlug}/threads, listing threads for a board with pagination.
+func listThreads(db *pgxpool.Pool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+		boardSlug := chi.URLParam(r, "boardSlug")
+
+		page := getIntQuery(r, "page", 1)
+		limit := getIntQuery(r, "limit", 20)
+		if limit > 100 {
+			limit = 100
+		}
+		offset := (page - 1) * limit
+
+		var boardID int
+		err := db.QueryRow(ctx, "SELECT id FROM boards WHERE slug = $1", boardSlug).Scan(&boardID)
+		if err != nil {
+			http.Error(w, "Board not found", http.StatusNotFound)
+			return
+		}
+
+		rows, err := db.Query(ctx,
+			"SELECT id, board_id, user_id, title, content, image_url, metadata, created_at, updated_at, last_bumped_at, archived_at "+
+				"FROM posts WHERE board_id = $1 AND thread_id IS NULL AND archived_at IS NULL ORDER BY last_bumped_at DESC LIMIT $2 OFFSET $3",
+			boardID, limit, offset,
+		)
+		if err != nil {
+			http.Error(w, "Failed to fetch threads", http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+
+		var threads []models.Post
+		for rows.Next() {
+			var p models.Post
+			if err := rows.Scan(&p.ID, &p.BoardID, &p.UserID, &p.Title, &p.Content, &p.ImageURL, &p.Metadata,
+				&p.CreatedAt, &p.UpdatedAt, &p.LastBumpedAt, &p.ArchivedAt); err != nil {
+				http.Error(w, "Failed to scan threads", http.StatusInternalServerError)
+				return
+			}
+			threads = append(threads, p)
+		}
+
+		json.NewEncoder(w).Encode(threads)
+	}
 }
 
 // ThreadResponse represents a thread with its replies.

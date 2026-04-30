@@ -16,9 +16,13 @@ import (
 
 // RegisterAuth sets up authentication routes.
 func RegisterAuth(r *chi.Mux, db *pgxpool.Pool, cfg config.Config) {
-	r.Post("/auth/register", register(db))
-	r.Post("/auth/login", login(db, cfg))
-	r.With(middleware.Auth(cfg), middleware.AdminOnly).Post("/auth/register/admin", registerAdmin(db))
+	r.Use(middleware.BodyLimit(cfg.MaxBodySize))
+	r.Post("/auth/register/admin", registerAdmin(db))
+	r.Group(func(r chi.Router) {
+		r.Use(middleware.RateLimitPublic(cfg))
+		r.Post("/auth/register", register(db))
+		r.Post("/auth/login", login(db, cfg))
+	})
 }
 
 // register handles POST /auth/register, creating a new user.
@@ -102,7 +106,6 @@ func login(db *pgxpool.Pool, cfg config.Config) http.HandlerFunc {
 			return
 		}
 
-		// Parse JWTExpiry duration
 		expiry, err := time.ParseDuration(cfg.JWTExpiry)
 		if err != nil {
 			http.Error(w, "Invalid JWT expiry configuration", http.StatusInternalServerError)
@@ -147,7 +150,7 @@ func registerAdmin(db *pgxpool.Pool) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var user models.User
 		if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-			http.Error(w, "Invalid request body", http.StatusBadRequest)
+			http.Error(w, "Invalid request body or size exceeded", http.StatusRequestEntityTooLarge)
 			return
 		}
 

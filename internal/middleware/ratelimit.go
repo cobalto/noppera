@@ -12,8 +12,7 @@ import (
 // RateLimit creates middleware to limit requests based on config.
 func RateLimit(cfg config.Config) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
-		// Configure limiter: requests per second with burst
-		lim := tollbooth.NewLimiter(float64(cfg.RateLimitRequests)/3600.0, &limiter.ExpirableOptions{
+		lim := tollbooth.NewLimiter(float64(cfg.RateLimitRequests), &limiter.ExpirableOptions{
 			DefaultExpirationTTL: 3600 * time.Second,
 		}).SetBurst(cfg.RateLimitBurst).SetIPLookups([]string{"RemoteAddr", "X-Forwarded-For", "X-Real-IP"})
 

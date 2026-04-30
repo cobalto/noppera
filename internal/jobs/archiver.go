@@ -10,6 +10,7 @@ import (
 	"github.com/cobalto/noppera/internal/storage"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/robfig/cron/v3"
+	"github.com/rs/zerolog/log"
 )
 
 // Archiver manages thread archiving and deletion.
@@ -51,12 +52,12 @@ func (a *Archiver) run() {
 
 	// Archive threads inactive for 7 days
 	if err := a.archiveThreads(ctx); err != nil {
-		fmt.Printf("Archiver: failed to archive threads: %v\n", err)
+		log.Error().Err(err).Msg("Archiver: failed to archive threads")
 	}
 
 	// Delete archived threads older than ARCHIVE_DELETE_DAYS
 	if err := a.deleteOldThreads(ctx); err != nil {
-		fmt.Printf("Archiver: failed to delete old threads: %v\n", err)
+		log.Error().Err(err).Msg("Archiver: failed to delete old threads")
 	}
 }
 
@@ -92,20 +93,41 @@ func (a *Archiver) deleteOldThreads(ctx context.Context) error {
 			return fmt.Errorf("failed to scan thread: %w", err)
 		}
 
-		// Delete associated images
-		if imageURL != nil {
-			if err := a.store.Delete(ctx, *imageURL); err != nil {
-				fmt.Printf("Archiver: failed to delete image for thread %d: %v\n", id, err)
-				continue
-			}
+		// Delete images for thread and all replies
+		if err := a.deleteThreadImages(ctx, id); err != nil {
+			log.Error().Err(err).Int("threadID", id).Msg("Archiver: failed to delete images for thread")
 		}
 
 		// Delete thread and replies
 		if err := models.DeletePost(ctx, a.db, id); err != nil {
-			fmt.Printf("Archiver: failed to delete thread %d: %v\n", id, err)
+			log.Error().Err(err).Int("threadID", id).Msg("Archiver: failed to delete thread")
 			continue
 		}
 	}
 
+	return nil
+}
+
+func (a *Archiver) deleteThreadImages(ctx context.Context, threadID int) error {
+	rows, err := a.db.Query(ctx,
+		"SELECT image_url FROM posts WHERE thread_id = $1 OR id = $1",
+		threadID,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to query reply images: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var imageURL *string
+		if err := rows.Scan(&imageURL); err != nil {
+			continue
+		}
+		if imageURL != nil {
+			if err := a.store.Delete(ctx, *imageURL); err != nil {
+				log.Error().Err(err).Str("imageURL", *imageURL).Msg("Archiver: failed to delete image")
+			}
+		}
+	}
 	return nil
 }

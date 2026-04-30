@@ -42,6 +42,10 @@ go.work.sum
 .env
 .env.local
 *.env
+.github
+.opencode
+.specify
+specs/
 
 # Log files
 *.log

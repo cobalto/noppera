@@ -18,7 +18,7 @@ import (
 func RegisterPosts(r chi.Router, db *pgxpool.Pool, store storage.Storage) {
 	r.Post("/boards/{boardSlug}/threads", createThread(db, store))
 	r.Post("/threads/{threadID}/replies", createReply(db, store))
-	r.With(middleware.Auth(store.Config())).Delete("/posts/{postID}/user", deletePostUser(db))
+	r.With(middleware.Auth(store.Config())).Delete("/posts/{postID}/user", deletePostUser(db, store))
 	r.With(middleware.Auth(store.Config()), middleware.AdminOnly).Delete("/posts/{postID}/admin", deletePostAdmin(db, store))
 }
 
@@ -91,11 +91,20 @@ func createThread(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 				http.Error(w, "Invalid image data", http.StatusBadRequest)
 				return
 			}
+			if len(imgData) < 4 {
+				http.Error(w, "Invalid image data", http.StatusBadRequest)
+				return
+			}
+			format := detectImageFormat(imgData)
+			if format == "" {
+				http.Error(w, "Unsupported image format", http.StatusBadRequest)
+				return
+			}
 			if maxImageSize, ok := board.Settings["max_image_size"].(float64); ok && len(imgData) > int(maxImageSize) {
 				http.Error(w, "Image size exceeds board limit", http.StatusBadRequest)
 				return
 			}
-			url, err := store.Upload(ctx, imgData, "jpg")
+			url, err := store.Upload(ctx, imgData, format)
 			if err != nil {
 				http.Error(w, "Failed to upload image", http.StatusInternalServerError)
 				return
@@ -122,7 +131,22 @@ func createThread(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 			LastBumpedAt: time.Now(),
 		}
 
-		if err := models.CreatePost(ctx, db, &post); err != nil {
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			http.Error(w, "Failed to create thread", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		if err := models.CreatePostTx(ctx, tx, &post); err != nil {
+			http.Error(w, "Failed to create thread", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			if imageURL != nil {
+				store.Delete(ctx, *imageURL)
+			}
 			http.Error(w, "Failed to create thread", http.StatusInternalServerError)
 			return
 		}
@@ -197,11 +221,20 @@ func createReply(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 				http.Error(w, "Invalid image data", http.StatusBadRequest)
 				return
 			}
+			if len(imgData) < 4 {
+				http.Error(w, "Invalid image data", http.StatusBadRequest)
+				return
+			}
+			format := detectImageFormat(imgData)
+			if format == "" {
+				http.Error(w, "Unsupported image format", http.StatusBadRequest)
+				return
+			}
 			if maxImageSize, ok := board.Settings["max_image_size"].(float64); ok && len(imgData) > int(maxImageSize) {
 				http.Error(w, "Image size exceeds board limit", http.StatusBadRequest)
 				return
 			}
-			url, err := store.Upload(ctx, imgData, "jpg")
+			url, err := store.Upload(ctx, imgData, format)
 			if err != nil {
 				http.Error(w, "Failed to upload image", http.StatusInternalServerError)
 				return
@@ -228,14 +261,28 @@ func createReply(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 			LastBumpedAt: time.Now(),
 		}
 
-		if err := models.CreatePost(ctx, db, &post); err != nil {
+		tx, err := db.Begin(ctx)
+		if err != nil {
+			http.Error(w, "Failed to create reply", http.StatusInternalServerError)
+			return
+		}
+		defer tx.Rollback(ctx)
+
+		if err := models.CreatePostTx(ctx, tx, &post); err != nil {
 			http.Error(w, "Failed to create reply", http.StatusInternalServerError)
 			return
 		}
 
-		// Bump thread
-		if err := models.UpdateThreadBumpTime(ctx, db, threadID, time.Now()); err != nil {
+		if err := models.UpdateThreadBumpTimeTx(ctx, tx, threadID, time.Now()); err != nil {
 			http.Error(w, "Failed to bump thread", http.StatusInternalServerError)
+			return
+		}
+
+		if err := tx.Commit(ctx); err != nil {
+			if imageURL != nil {
+				store.Delete(ctx, *imageURL)
+			}
+			http.Error(w, "Failed to create reply", http.StatusInternalServerError)
 			return
 		}
 
@@ -245,7 +292,7 @@ func createReply(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 }
 
 // deletePostUser handles DELETE /posts/{postID}/user, allowing users to delete their own posts.
-func deletePostUser(db *pgxpool.Pool) http.HandlerFunc {
+func deletePostUser(db *pgxpool.Pool, store storage.Storage) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		postID, err := parseInt(chi.URLParam(r, "postID"))
@@ -264,6 +311,13 @@ func deletePostUser(db *pgxpool.Pool) http.HandlerFunc {
 		if err != nil || post.UserID == nil || *post.UserID != user.ID {
 			http.Error(w, "Post not found or not owned by user", http.StatusForbidden)
 			return
+		}
+
+		if post.ImageURL != nil {
+			if err := store.Delete(ctx, *post.ImageURL); err != nil {
+				http.Error(w, "Failed to delete image", http.StatusInternalServerError)
+				return
+			}
 		}
 
 		if err := models.DeletePost(ctx, db, postID); err != nil {
@@ -313,4 +367,28 @@ func getUserID(r *http.Request) *int {
 		return &user.ID
 	}
 	return nil
+}
+
+var imageSignatures = map[string][]byte{
+	"jpg": {0xFF, 0xD8, 0xFF},
+	"png": {0x89, 0x50, 0x4E, 0x47},
+	"gif": {0x47, 0x49, 0x46},
+}
+
+func detectImageFormat(data []byte) string {
+	for ext, sig := range imageSignatures {
+		if len(data) >= len(sig) {
+			match := true
+			for i, b := range sig {
+				if data[i] != b {
+					match = false
+					break
+				}
+			}
+			if match {
+				return ext
+			}
+		}
+	}
+	return "jpg"
 }
